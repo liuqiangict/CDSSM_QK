@@ -94,9 +94,6 @@ if __name__ == '__main__':
     
     trainer = mstf.Trainer.create_trainer(setting)
     trainer.optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-    #trainer.optimizer = tf.train.AdadeltaOptimizer(learning_rate=0.2)
-    #trainer.optimizer = tf.train.AdamOptimizer(learning_rate=0.1)
-    #trainer.optimizer = tf.train.RMSPropOptimizer(learning_rate=1.0)
     
     trainer.setup(model)
     trainer.start()
@@ -140,14 +137,9 @@ if __name__ == '__main__':
                 total_loss_avg = total_loss / total_samples
 
                 if (i % batch_num_to_print_loss == 0):
-                    #print (result['doc'][:5])
-                    #print (result['score'][:5])
-                    #print (batch['label'][:5])
-                    
                     logging.info('Batch: {:}, partial average loss: {:f}, total average loss: {:f}'.format(i, partial_loss_avg, total_loss_avg))
                     
                 i += 1
-                #break
 
             logging.info('Epoch {} finished, total average loss: {:f}'.format(epoch, total_loss_avg))
 
@@ -190,5 +182,4 @@ if __name__ == '__main__':
             
     trainer.stop()
 
-    #print('Done')
     logging.info('Done')

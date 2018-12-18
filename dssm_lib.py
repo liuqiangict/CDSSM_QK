@@ -28,21 +28,11 @@ def parse_dims(dims_str):
 
 def TextExtract(text, win_size, dict_handle, weight, dim_input, dim_output, max_term_count = 12):
     indices, ids, values, offsets = mstf.dssm_xletter(input=text, win_size=win_size, dict_handle=dict_handle, max_term_count = max_term_count)
-#    indices = tf.Print(indices, [indices],'Out[indices]=',summarize = 256)
-#    ids = tf.Print(ids, [ids],'Out[ids]=',summarize = 256)
-#    offsets = tf.Print(offsets, [offsets],'Out[offsets]=',summarize = 128)
-#    print('shape indices:',indices.get_shape())
-#    print('shape ids:',ids.get_shape())
-#    print('shape values:',values.get_shape())
-#    print('shape offsets:',offsets.get_shape())
     offsets_to_dense = tf.segment_sum(tf.ones_like(offsets),offsets)
     batch_id = tf.cumsum(offsets_to_dense[:-1]) #dense offset lei jia
     index_tensor = tf.concat([tf.expand_dims(batch_id,axis=-1), tf.expand_dims(indices,axis=-1)],axis=-1)
-#    index_tensor = tf.Print(index_tensor,[index_tensor],'Out[index_tensor]=',summarize = 256)
     value_tensor = ids
-#    value_tensor = tf.Print(value_tensor,[value_tensor],'Out[value_tensor]=',summarize = 256)
     dense_shape = tf.concat([tf.shape(offsets),tf.expand_dims(tf.reduce_max(indices) + 1,axis=-1)],axis=0)
-#    dense_shape = tf.Print(dense_shape,[dense_shape],'Out[dense_shape]=')
     text_tensor = tf.SparseTensor(indices=tf.cast(index_tensor,tf.int64), values = value_tensor, dense_shape=tf.cast(dense_shape,tf.int64))
     
     text_padding = tf.reduce_max(indices) + 1
@@ -51,9 +41,6 @@ def TextExtract(text, win_size, dict_handle, weight, dim_input, dim_output, max_
     text_tensor,text_mask = tf.sparse_fill_empty_rows(text_tensor,dim_input-1)
     text_vecs = tf.nn.embedding_lookup_sparse(weight,text_tensor,None,combiner='sum')
     text_vecs = tf.transpose(tf.multiply(tf.transpose(text_vecs), 1-tf.cast(text_mask,dtype=tf.float32)))
-    print('shape text_vecs:',text_vecs.get_shape())
-    #return vecs
-    #q_vecs = tf.sparse_tensor_dense_matmul(text_tensor, weight_q)
     text_vecs = tf.reshape(text_vecs,[-1,text_padding, dim_output])
     step_mask = tf.equal(tf.reduce_sum(text_vecs,axis=2),0)
     step_mask = tf.where(step_mask ,-math.inf*tf.ones_like(step_mask,dtype=tf.float32),tf.zeros_like(step_mask,dtype=tf.float32))
@@ -83,7 +70,6 @@ def Conv(name, x, filter_width, in_filters, out_filters, strides):
               initializer=tf.random_normal_initializer(stddev=math.sqrt(2.0/n)))
       return tf.nn.conv1d(x, kernel, strides, padding='SAME') 
 
-# ((x-mean)/var)*gamma+beta
 def batch_norm(name, x, is_training):  
     x_shape = x.get_shape()  
     params_shape = x_shape[-1:]  
@@ -139,9 +125,6 @@ def SampleResidual(name, x, filter_width, in_filters, activate_before_residual=F
     
 def dssm_xletter_conv(text, win_size, dict_handle, weight, max_term_count = 12):
     indices, ids, values, offsets = mstf.dssm_xletter(input=text, win_size=win_size, dict_handle=dict_handle, max_term_count = max_term_count)
-#    indices = tf.Print(indices, [indices],'Out[indices]=',summarize = 256)
-#    ids = tf.Print(ids, [ids],'Out[ids]=',summarize = 256)
-#    offsets = tf.Print(offsets, [offsets],'Out[offsets]=',summarize = 128)
     print('shape indices:',indices.get_shape())
     print('shape ids:',ids.get_shape())
     print('shape values:',values.get_shape())
@@ -170,21 +153,6 @@ def dssm_xletter_conv3(text, win_size, dict_handle, weight, dim_input, dim_outpu
     else:
         maxpool = KMaxpooling(text_vecs, text_padding, step_mask, dim_input, dim_output, k_max_pooling)
     return maxpool
-
-def ICEEmb(ice, weight):
-    ices = tf.string_split(ice, delimiter=',')
-    ice_indices = tf.reshape(tf.slice(ices.indices,[0,0],[-1,1]),[-1,1])
-    ice_values = tf.string_to_number(ices.values,out_type = tf.int64)
-    ice_tensor = tf.SparseTensor(indices=ice_indices, values = ice_values, dense_shape=tf.cast([tf.reduce_max(ice_indices) + 1], tf.int64))
-    ice_emb = tf.nn.embedding_lookup_sparse(weight, ice_tensor, None,combiner='sum')
-    return ice_emb
-    
-def huber_loss(labels, predictions, delta=1.0):
-   residual = tf.abs(predictions - labels)
-   condition = tf.less(residual, delta)
-   small_res = 0.5 * residual**2
-   large_res = delta * residual - 0.5 * delta**2
-   return tf.where(condition, small_res, large_res)
 
 def get_activation_func(activation):
   if activation == 'relu':
@@ -226,9 +194,7 @@ class CDSSMModel(mstf.Model):
         keyword = tf.placeholder(tf.string, [None], name='keyword')
         
         label = tf.placeholder(tf.float32, [None], name='label')
-        #qice = tf.placeholder(tf.string,[None],name = 'qice')
-        #kice = tf.placeholder(tf.string,[None],name = 'kice')
-        
+
         op_dict = mstf.dssm_dict(self.dict_file)
 
         dim_input = self.dim_dict * self.win_size
@@ -247,25 +213,10 @@ class CDSSMModel(mstf.Model):
                                            initializer=tf.random_uniform_initializer(-random_range, random_range))
 
                 if i == 0:
-                    #random_range_ice = math.sqrt(6.0 / (3181 + 288))
-                    #weight_qice_layer = tf.get_variable(name='weight_qice_layer',
-                    #                       shape=[3181, 288],
-                    #                       initializer=tf.random_uniform_initializer(-random_range_ice, random_range_ice))
-                    #weight_kice_layer = tf.get_variable(name='weight_kice_layer',
-                    #                       shape=[3181, 288],
-                    #                       initializer=tf.random_uniform_initializer(-random_range_ice, random_range_ice))
-
                     op_output_q, _ = dssm_xletter_conv(query, self.win_size, op_dict, weight_q, max_term_count = 12)
                     print('op_output_q:', op_output_q.get_shape())
                     op_output_d, _ = dssm_xletter_conv(keyword, self.win_size, op_dict, weight_d, max_term_count = 12)
-                    
-                    #op_output_qice = ICEEmb(qice, weight_qice_layer)
-                    #op_output_kice = ICEEmb(kice, weight_kice_layer)
-                    
-                    #op_output_q = tf.concat([op_output_q, op_output_qice], axis=1)
-                    #op_output_d = tf.concat([op_output_d, op_output_kice], axis=1)
-                    
-                    #dim_input = dim_output * 1 + 288
+
                     dim_input = dim_output
         
                 else:
@@ -279,28 +230,16 @@ class CDSSMModel(mstf.Model):
                 else:
                     op_output_q = self.hidden_activation_func(op_output_q)
                     op_output_d = self.hidden_activation_func(op_output_d)
-                 
-#                if i != len(self.dims) - 1:
-#                    op_output_q = self.hidden_activation_func(op_output_q)
-#                    op_output_d = self.hidden_activation_func(op_output_d)
 
             op_input_q = op_output_q
             op_input_d = op_output_d
-#            dim_input = dim_output
-        
-        #self.last_bn = True
+
         if self.last_bn:
             op_output_q = tf.contrib.layers.batch_norm(op_output_q, center=True, scale=False, is_training=self.is_training)
             op_output_d = tf.contrib.layers.batch_norm(op_output_d, center=True, scale=False, is_training=self.is_training)
 
-        # # CDSSM softmax implemented with customized operator
-        # op_softmax, *_ = mstf.dssm_softmax(query=op_output_q, doc=op_output_d, negative_count=self.negative_count)
-        # op_score, *_ = mstf.dssm_softmax(query=op_output_q, doc=op_output_d, negative_count=0)
-
-        # CDSSM softmax implemented with TF build-in operators
         op_output_q = tf.nn.l2_normalize(op_output_q, dim=1)
         op_output_d = tf.nn.l2_normalize(op_output_d, dim=1)
-#        scos = tf.reduce_sum(tf.multiply(op_output_q, op_output_d), axis=1)
 
         W_1 = tf.get_variable('weight_1', [1], initializer=tf.constant_initializer(1.0))
         b_1 = tf.get_variable('b_1', [1], initializer=tf.constant_initializer(0.01))
@@ -308,11 +247,6 @@ class CDSSMModel(mstf.Model):
         cosines = tf.reduce_sum(tf.multiply(op_output_q, op_output_d), axis=1)
         scos = cosines * W_1 + b_1
 
-        #op_loss = tf.reduce_mean(tf.abs(cosines-label)) #mae
-        #op_loss = tf.reduce_sum(tf.abs(cosines-label)) #mae
-        #op_loss = tf.reduce_sum(tf.pow(scos-label, 2)) #mse
-        #op_loss = tf.reduce_sum(weight * tf.pow(cosines-label, 2)) #mse
-        #op_loss = tf.reduce_sum(huber_loss(label, cosines, 0.70))
         op_loss = self.calc_loss(scos, label)
         
 
